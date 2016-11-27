@@ -1,2 +1,4 @@
+CFLAGS := -std=c++11 -Wall
+
 maze: main.cc
-	$(CXX) -o $@ -std=c++11 $<
+	$(CXX) -o $@ $(CFLAGS) $<
