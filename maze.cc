@@ -3,55 +3,37 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <list>
+#include <memory>
 #include <vector>
 
-class Path {
-public:
-  Path() {}
-  void Push(int row, int col) { points_.push_back(std::make_pair(row, col)); }
-  void Pop() { points_.pop_back(); }
-  size_t Size() const { return points_.size(); }
+enum class Direction { NONE, NORTH, SOUTH, EAST, WEST };
 
-  bool Contains(int row, int col) const {
-    for (const auto &point : points_) {
-      if (point.first == row && point.second == col) {
-        return true;
-      }
-    }
-    return false;
-  }
+struct Cell {
+  Cell() :dir(Direction::NONE), orig('\0'), dist(-1) {}
+  Cell(char c) :dir(Direction::NONE), orig(c), dist(-1) {}
 
-  void Print() const {
-    for (const auto &point : points_) {
-      std::cout << point.first << ", " << point.second << "\n";
-    }
-  }
-
-private:
-  std::vector<std::pair<int, int> >points_;
+  Direction dir;  // direction to predecessor
+  char orig;      // original character here
+  int dist;       // distance rom the start
 };
 
 class Maze {
 public:
-  Maze() :nrows_(0), ncols_(0), data_(nullptr) {}
-
-  ~Maze() {
-    free(data_);
-    data_ = nullptr;
-  }
+  Maze() :nrows_(0), ncols_(0) {}
 
   bool InBounds(int row, int col) {
     return row >= 0 && col >= 0 && row < nrows_ && col < ncols_;
   }
 
-  char Cell(int row, int col) {
+  char At(int row, int col) {
     // TODO: bounds-checking
     const int offset = row * ncols_ + col;
-    return data_[offset];
+    return cells_[offset].orig;
   }
 
   bool Empty(int row, int col) {
-    return isspace(Cell(row, col));
+    return isspace(At(row, col));
   }
 
   int Read(std::ifstream &in) {
@@ -70,8 +52,7 @@ public:
     }
 
     const size_t tot = ncols_ * nrows_;
-    data_ = new char[tot];
-    memset(data_, 0, tot);
+    cells_.reset(new Cell[tot]);
 
     in.clear();
     in.seekg(0);
@@ -82,7 +63,7 @@ public:
         if (c == '\n') {
           break;
         }
-        data_[ix++] = c;
+        cells_[ix++].orig = c;
       }
     }
     if (ix != tot) {
@@ -125,6 +106,7 @@ public:
     }
   }
 
+#if 0
   void Print(const Path &path) {
     const size_t iterations = static_cast<size_t>(nrows_) * static_cast<size_t>(ncols_);
     std::cout << iterations << std::endl;
@@ -144,6 +126,7 @@ public:
       std::cout << std::flush;
     }
   }
+#endif
 
   int Solve() {
     const size_t border_size = ncols_ * 2 + nrows_ * 2 - 4;
@@ -187,18 +170,18 @@ public:
       return 1;
     }
 
-    Path path;
-    if (Explore(&path, start.first, start.second)) {
+    std::list<Cell> bfs_queue;
+    if (Explore(&bfs_queue, start.first, start.second)) {
       std::cout << "Success!\n";
-      Print(path);
+      //Print(path);
     } else {
       std::cout << "Fail :-(\n";
     }
     return 0;
   }
 
-  bool Explore(Path *path, int row, int col) {
-    std::cout << "> exploring: " << row << ", " << col << ", size is " << path->Size() << "\n";
+  bool Explore(std::list<Cell> *cells, int row, int col) {
+    std::cout << "> exploring: " << row << ", " << col << "\n";
     if (!InBounds(row, col)) {
       std::cout << "< not in bounds\n";
       return false;
@@ -207,6 +190,7 @@ public:
       std::cout << "< not empty\n";
       return false;
     }
+    #if 0
     if (path->Contains(row, col)) {
       return false;
     }
@@ -223,13 +207,14 @@ public:
     }
 
     path->Pop();
+    #endif
     return false;
   }
 
 private:
   int nrows_;
   int ncols_;
-  char *data_;
+  std::unique_ptr<Cell[]> cells_;
   std::pair<int, int> end_;
 };
 

@@ -8,7 +8,7 @@ all: maze
 clean:
 	rm -f maze
 
-maze: main.cc
+maze: maze.cc
 	$(CXX) -o $@ $(CFLAGS) $<
 
 .PHONY: all clean solve
