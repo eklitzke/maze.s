@@ -2,6 +2,7 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <set>
 #include <string>
 #include <list>
 #include <memory>
@@ -16,24 +17,67 @@ struct Cell {
   Direction dir;  // direction to predecessor
   char orig;      // original character here
   int dist;       // distance rom the start
+  int row;        // the row
+  int col;        // the column
 };
 
 class Maze {
 public:
-  Maze() :nrows_(0), ncols_(0) {}
+  Maze() :nrows_(0), ncols_(0), start_(nullptr), end_(nullptr) {}
 
   bool InBounds(int row, int col) {
     return row >= 0 && col >= 0 && row < nrows_ && col < ncols_;
   }
 
-  char At(int row, int col) {
-    // TODO: bounds-checking
-    const int offset = row * ncols_ + col;
-    return cells_[offset].orig;
+  Cell *Neighbor(Cell *orig, Direction dir) {
+    Direction opp = Direction::NONE;
+    int row = orig->row;
+    int col = orig->col;
+    switch (dir) {
+    case Direction::NORTH:
+      row--;
+      opp = Direction::SOUTH;
+      break;
+    case Direction::SOUTH:
+      row++;
+      opp = Direction::NORTH;
+      break;
+    case Direction::EAST:
+      col++;
+      opp = Direction::WEST;
+      break;
+    case Direction::WEST:
+      col--;
+      opp = Direction::EAST;
+      break;
+    default:
+      std::cerr << "wat\n";
+      break;
+    }
+    if (!InBounds(row, col)) {
+      return nullptr;
+    }
+    Cell *cell = At(row, col);
+    if (cell->dist != -1 || !isspace(cell->orig)) {
+      return nullptr;
+    }
+    cell->dir = opp;
+    cell->dist = orig->dist + 1;
+    return cell;
   }
 
-  bool Empty(int row, int col) {
-    return isspace(At(row, col));
+  Cell* At(int row, int col) {
+    // TODO: bounds-checking
+    const int offset = row * ncols_ + col;
+    Cell *ret = &cells_[offset];
+    assert(ret->row == row);
+    assert(ret->col == col);
+    return ret;
+  }
+
+  bool IsVisitable(int row, int col) {
+    const Cell *cell = At(row, col);
+    return (cell->dist == -1) && isspace(cell->orig);
   }
 
   int Read(std::ifstream &in) {
@@ -58,13 +102,20 @@ public:
     in.seekg(0);
 
     size_t ix = 0;
+    int row = 0;
     while (std::getline(in, line)) {
+      int col = 0;
       for (const auto & c : line) {
         if (c == '\n') {
           break;
         }
-        cells_[ix++].orig = c;
+
+        Cell &cell = cells_[ix++];
+        cell.orig = c;
+        cell.row = row;
+        cell.col = col++;
       }
+      row++;
     }
     if (ix != tot) {
       std::cerr << "got ix = " << ix << ", expected ix = " << tot << "\n";
@@ -106,18 +157,43 @@ public:
     }
   }
 
-#if 0
-  void Print(const Path &path) {
+  void Print() {
+    std::set<std::pair<int, int> > path;
+
+    Cell *cell = end_;
+    int row = end_->row;
+    int col = end_->col;
+    path.insert(std::make_pair(row, col));
+    while (cell != start_) {
+      switch (cell->dir) {
+      case Direction::NORTH:
+        row--;
+        break;
+      case Direction::SOUTH:
+        row++;
+        break;
+      case Direction::EAST:
+        col++;
+        break;
+      case Direction::WEST:
+        col--;
+        break;
+      default:
+        std::cerr << "what\n";
+        break;
+      }
+      path.insert(std::make_pair(row, col));
+      cell = At(row, col);
+    }
+
     const size_t iterations = static_cast<size_t>(nrows_) * static_cast<size_t>(ncols_);
-    std::cout << iterations << std::endl;
     for (size_t i = 0; i < iterations; i++) {
-      int row = i / ncols_;
-      int col = i % ncols_;
-      //std::cout << i << " " << row << " " << col << std::endl;
-      if (path.Contains(row, col)) {
+      row = i / ncols_;
+      col = i % ncols_;
+      if (path.find(std::make_pair(row, col)) != path.end()) {
         std::cout << "@";
       } else {
-        std::cout << Cell(row, col);
+        std::cout << At(row, col)->orig;
       }
 
       if (col == ncols_ - 1) {
@@ -126,96 +202,96 @@ public:
       std::cout << std::flush;
     }
   }
-#endif
 
   int Solve() {
     const size_t border_size = ncols_ * 2 + nrows_ * 2 - 4;
-    std::pair<int, int> start;
 
     int row = 0;
     int col = 0;
-    bool found = false;
     for (size_t i = 0; i < border_size; i++) {
       TravelBorder(&row, &col);
-      if (Empty(row, col)) {
-        start = std::make_pair(row, col);
-        found = true;
+      if (IsVisitable(row, col)) {
+        start_ = At(row, col);
+        std::cout << "start at " << row << ", " << col << std::endl;
         break;
       }
     }
-    if (!found) {
+    if (!start_) {
       std::cerr << "failed to find start\n";
       return 1;
     }
 
     // finish consuming the adjacent blank spots
-    while (Empty(row, col)) {
+    while (IsVisitable(row, col)) {
       TravelBorder(&row, &col);
     }
 
-    found = false;
+    // Mark the distance from the start; must be done after consuming adjacent
+    // blank spots.
+    start_->dist = 0;
+
     for (size_t i = 0; i < border_size; i++) {
       TravelBorder(&row, &col);
-      if (Empty(row, col)) {
-        end_ = std::make_pair(row, col);
-        if (end_ == start) {
+      if (IsVisitable(row, col)) {
+        Cell *cell = At(row, col);
+        if (cell == start_) {
           continue;
         }
-        found = true;
+        end_ = cell;
+        std::cout << "end at " << end_->row << ", " << end_->col << std::endl;
         break;
       }
     }
-    if (!found) {
+    if (!end_) {
       std::cerr << "failed to find end\n";
       return 1;
     }
 
-    std::list<Cell> bfs_queue;
-    if (Explore(&bfs_queue, start.first, start.second)) {
+    std::list<Cell*> bfs_queue{start_};
+
+    if (Explore(&bfs_queue)) {
       std::cout << "Success!\n";
-      //Print(path);
+      Print();
     } else {
       std::cout << "Fail :-(\n";
     }
     return 0;
   }
 
-  bool Explore(std::list<Cell> *cells, int row, int col) {
-    std::cout << "> exploring: " << row << ", " << col << "\n";
-    if (!InBounds(row, col)) {
-      std::cout << "< not in bounds\n";
+  bool Explore(std::list<Cell*> *cells) {
+    if (cells->empty()) {
       return false;
-    }
-    if (!Empty(row, col)) {
-      std::cout << "< not empty\n";
-      return false;
-    }
-    #if 0
-    if (path->Contains(row, col)) {
-      return false;
-    }
-    path->Push(row, col);
-    if (end_.first == row && end_.second == col) {
-      return true;
     }
 
-    if (Explore(path, row - 1, col) ||
-        Explore(path, row + 1, col) ||
-        Explore(path, row, col - 1) ||
-        Explore(path, row, col + 1)) {
+    // get the front cell
+    Cell* cell = cells->front();
+    if (cell == end_) {
       return true;
     }
+    cells->pop_front();
 
-    path->Pop();
-    #endif
-    return false;
+    Cell *neighbor;
+    if ((neighbor = Neighbor(cell, Direction::NORTH))) {
+      cells->push_back(neighbor);
+    }
+    if ((neighbor = Neighbor(cell, Direction::SOUTH))) {
+      cells->push_back(neighbor);
+    }
+    if ((neighbor = Neighbor(cell, Direction::EAST))) {
+      cells->push_back(neighbor);
+    }
+    if ((neighbor = Neighbor(cell, Direction::WEST))) {
+      cells->push_back(neighbor);
+    }
+    return Explore(cells);
   }
 
 private:
   int nrows_;
   int ncols_;
   std::unique_ptr<Cell[]> cells_;
-  std::pair<int, int> end_;
+  Cell* start_;
+  Cell* end_;
 };
 
 int main(int argc, char **argv) {
