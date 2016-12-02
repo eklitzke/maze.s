@@ -1,4 +1,3 @@
-#include <cassert>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -51,7 +50,7 @@ public:
       opp = Direction::EAST;
       break;
     default:
-      std::cerr << "wat\n";
+      throw std::runtime_error("invalid direction");
       break;
     }
     if (!InBounds(row, col)) {
@@ -69,10 +68,7 @@ public:
   Cell* At(int row, int col) {
     // TODO: bounds-checking
     const int offset = row * ncols_ + col;
-    Cell *ret = &cells_[offset];
-    assert(ret->row == row);
-    assert(ret->col == col);
-    return ret;
+    return &cells_[offset];
   }
 
   bool IsVisitable(int row, int col) {
@@ -153,7 +149,7 @@ public:
     } else {
       *row = -1;
       *col = -1;
-      std::cerr << "not reached!\n";
+      throw std::runtime_error("not reached");
     }
   }
 
@@ -179,7 +175,7 @@ public:
         col--;
         break;
       default:
-        std::cerr << "what\n";
+        throw std::runtime_error("invalid direction");
         break;
       }
       path.insert(std::make_pair(row, col));
@@ -190,10 +186,15 @@ public:
     for (size_t i = 0; i < iterations; i++) {
       row = i / ncols_;
       col = i % ncols_;
-      if (path.find(std::make_pair(row, col)) != path.end()) {
+      Cell *cell = At(row, col);
+      if (cell == start_) {
+        std::cout << "S";
+      } else if (cell == end_) {
+        std::cout << "E";
+      } else if (path.find(std::make_pair(row, col)) != path.end()) {
         std::cout << "@";
       } else {
-        std::cout << At(row, col)->orig;
+        std::cout << cell->orig;
       }
 
       if (col == ncols_ - 1) {
@@ -205,7 +206,6 @@ public:
 
   int Solve() {
     const size_t border_size = ncols_ * 2 + nrows_ * 2 - 4;
-
     int row = 0;
     int col = 0;
     for (size_t i = 0; i < border_size; i++) {
